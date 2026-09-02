@@ -86,7 +86,7 @@ async def on_callback(client, query):
         text = (
             "**API Documentation**\n\n"
             "**Base URL:** `https://web-production-308f7.up.railway.app`\n"
-            "**Primary API:** `https://web-production-308f7.up.railway.app/download`\n\n"
+            "**Primary API:** `https://web-production-308f7.up.railway.app"
             "**Endpoint:** `GET /download`\n"
             "**Params:** `url`, `type` (audio/video), `api_key`\n\n"
             "A ready-to-use Python client (Youtube.py) is available below, "
@@ -123,8 +123,8 @@ from pyrogram.types import Message
 from py_yt import VideosSearch, Playlist
 import aiohttp
 
-API_URL = os.environ.get("RONAK_API_URL", "https://web-production-308f7.up.railway.app")
-API_KEY = os.environ.get("RONAK_API_KEY", "YOUR_API_KEY_HERE") ## Get This API KEY FROM @RonakKeyBot 
+API_URL = os.environ.get("ROYAL_API_URL", "https://web-production-308f7.up.railway.app")
+API_KEY = os.environ.get("ROYAL_API_KEY", "YOUR_API_KEY_HERE") ## Get This API KEY FROM  
 
 DOWNLOAD_DIR = "downloads"
 
