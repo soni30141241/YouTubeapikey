@@ -9,16 +9,27 @@ import yt_dlp
 import database
 
 
-app = FastAPI(title="Royal Fast API", version="1.0.0")
+app = FastAPI(
+    title="Royal Fast API",
+    version="1.0.0"
+)
 
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 
+# =========================
+# STARTUP
+# =========================
+
 @app.on_event("startup")
 async def startup():
     await database.init_db()
 
+
+# =========================
+# DELETE FILE
+# =========================
 
 def delete_file(path: str):
     try:
@@ -41,7 +52,7 @@ async def home():
 
 
 # =========================
-# HEALTH CHECK
+# HEALTH
 # =========================
 
 @app.get("/health")
@@ -52,7 +63,7 @@ async def health():
 
 
 # =========================
-# API INFO
+# INFO
 # =========================
 
 @app.get("/info")
@@ -82,7 +93,8 @@ async def download_media(
     api_key: str,
     background_tasks: BackgroundTasks
 ):
-    # API key verify
+
+    # Check API key
     is_valid, msg = await database.verify_key(api_key)
 
     if not is_valid:
@@ -91,17 +103,18 @@ async def download_media(
             detail=msg
         )
 
-    # Type validation
-    if type not in ("video", "audio"):
+    # Check type
+    if type not in ["video", "audio"]:
         raise HTTPException(
             status_code=400,
             detail="type must be 'video' or 'audio'"
         )
 
-    # Unique filename
+    # Unique file name
     file_id = uuid.uuid4().hex
 
     if type == "video":
+
         ydl_opts = {
             "format": "best",
             "outtmpl": f"{DOWNLOAD_DIR}/{file_id}.%(ext)s",
@@ -110,6 +123,7 @@ async def download_media(
         }
 
     else:
+
         ydl_opts = {
             "format": "bestaudio/best",
             "outtmpl": f"{DOWNLOAD_DIR}/{file_id}.%(ext)s",
@@ -118,16 +132,25 @@ async def download_media(
         }
 
     def extract():
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+
+            info = ydl.extract_info(
+                url,
+                download=True
+            )
+
             return ydl.prepare_filename(info)
 
     try:
+
         filename = await asyncio.to_thread(extract)
 
-        if not os.path.exists(filename):
+        # Make sure file exists
+        if not os.path.isfile(filename):
             raise Exception("Downloaded file not found")
 
+        # Delete after response
         background_tasks.add_task(
             delete_file,
             filename
@@ -140,7 +163,8 @@ async def download_media(
         )
 
     except Exception as e:
+
         raise HTTPException(
             status_code=500,
             detail=str(e)
-        )
+            )
