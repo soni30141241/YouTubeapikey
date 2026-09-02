@@ -1,5 +1,6 @@
 import os
 import asyncio
+import glob
 import uuid
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
@@ -128,7 +129,14 @@ async def download_media(
             "format": "bestaudio/best",
             "outtmpl": f"{DOWNLOAD_DIR}/{file_id}.%(ext)s",
             "quiet": True,
-            "noplaylist": True
+            "noplaylist": True,
+            "postprocessors": [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "192"
+                }
+            ]
         }
 
     def extract():
@@ -140,14 +148,25 @@ async def download_media(
                 download=True
             )
 
-            return ydl.prepare_filename(info)
+            # FFmpeg may change the final extension (audio -> mp3).
+            files = glob.glob(os.path.join(DOWNLOAD_DIR, f"{file_id}.*"))
+            files = [p for p in files if os.path.isfile(p)]
+            if not files:
+                return None
+
+            if type == "audio":
+                mp3 = os.path.join(DOWNLOAD_DIR, f"{file_id}.mp3")
+                if os.path.isfile(mp3):
+                    return mp3
+
+            return files[0]
 
     try:
 
         filename = await asyncio.to_thread(extract)
 
         # Make sure file exists
-        if not os.path.isfile(filename):
+        if not filename or not os.path.isfile(filename):
             raise Exception("Downloaded file not found")
 
         # Delete after response

@@ -5,10 +5,14 @@ from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import database
 
-# अपनी डिटेल्स यहाँ डालें
-API_ID = 36735558 
-API_HASH = "fcd0e09634ee9e526a8da20e6d295cad"
-BOT_TOKEN = "8445491147:AAHcyojAnNRdXYzHHHNVjx-CAVVgkRnnI-8"
+# Railway Variables में ये values set करें:
+# API_ID, API_HASH, BOT_TOKEN, RONAK_API_URL
+API_ID = int(os.environ.get("API_ID", "0"))
+API_HASH = os.environ.get("API_HASH", "")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+
+if not API_ID or not API_HASH or not BOT_TOKEN:
+    raise RuntimeError("Missing Railway variables: API_ID, API_HASH, BOT_TOKEN")
 
 app = Client("RonakKeyBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
@@ -81,8 +85,8 @@ async def on_callback(client, query):
     elif data == "api_docs":
         text = (
             "**API Documentation**\n\n"
-            "**Base URL:** `https://web-production-94922.up.railway.app`\n"
-            "**Primary API:** `https://web-production-94922.up.railway.app/download`\n\n"
+            "**Base URL:** `https://web-production-308f7.up.railway.app`\n"
+            "**Primary API:** `https://web-production-308f7.up.railway.app/download`\n\n"
             "**Endpoint:** `GET /download`\n"
             "**Params:** `url`, `type` (audio/video), `api_key`\n\n"
             "A ready-to-use Python client (Youtube.py) is available below, "
@@ -119,7 +123,7 @@ from pyrogram.types import Message
 from py_yt import VideosSearch, Playlist
 import aiohttp
 
-API_URL = os.environ.get("RONAK_API_URL", "https://web-production-94922.up.railway.app")
+API_URL = os.environ.get("RONAK_API_URL", "https://web-production-308f7.up.railway.app")
 API_KEY = os.environ.get("RONAK_API_KEY", "YOUR_API_KEY_HERE") ## Get This API KEY FROM @RonakKeyBot 
 
 DOWNLOAD_DIR = "downloads"
