@@ -1,11 +1,15 @@
 import os
 import asyncio
+import uuid
+
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
+
 import yt_dlp
 import database
 
-app = FastAPI(title="Royal Fast API")
+
+app = FastAPI(title="Royal Fast API", version="1.0.0")
 
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -17,14 +21,17 @@ async def startup():
 
 
 def delete_file(path: str):
-    if os.path.exists(path):
-        try:
+    try:
+        if os.path.exists(path):
             os.remove(path)
-        except Exception:
-            pass
+    except Exception:
+        pass
 
 
-# Home route
+# =========================
+# HOME
+# =========================
+
 @app.get("/")
 async def home():
     return {
@@ -33,7 +40,10 @@ async def home():
     }
 
 
-# Health check route
+# =========================
+# HEALTH CHECK
+# =========================
+
 @app.get("/health")
 async def health():
     return {
@@ -41,19 +51,29 @@ async def health():
     }
 
 
-# API documentation/info
+# =========================
+# API INFO
+# =========================
+
 @app.get("/info")
 async def info():
     return {
         "name": "Royal Fast API",
+        "version": "1.0.0",
         "status": "online",
         "endpoints": [
             "/",
             "/health",
-            "/download"
+            "/info",
+            "/download",
+            "/docs"
         ]
     }
 
+
+# =========================
+# DOWNLOAD
+# =========================
 
 @app.get("/download")
 async def download_media(
@@ -62,7 +82,7 @@ async def download_media(
     api_key: str,
     background_tasks: BackgroundTasks
 ):
-    # API Key check
+    # API key verify
     is_valid, msg = await database.verify_key(api_key)
 
     if not is_valid:
@@ -71,29 +91,30 @@ async def download_media(
             detail=msg
         )
 
-    video_id = (
-        url.split("v=")[-1].split("&")[0]
-        if "v=" in url
-        else url
-    )
-
-    if type not in ["video", "audio"]:
+    # Type validation
+    if type not in ("video", "audio"):
         raise HTTPException(
             status_code=400,
             detail="type must be 'video' or 'audio'"
         )
 
+    # Unique filename
+    file_id = uuid.uuid4().hex
+
     if type == "video":
         ydl_opts = {
             "format": "best",
-            "outtmpl": f"{DOWNLOAD_DIR}/{video_id}.%(ext)s",
-            "quiet": True
+            "outtmpl": f"{DOWNLOAD_DIR}/{file_id}.%(ext)s",
+            "quiet": True,
+            "noplaylist": True
         }
+
     else:
         ydl_opts = {
             "format": "bestaudio/best",
-            "outtmpl": f"{DOWNLOAD_DIR}/{video_id}.%(ext)s",
-            "quiet": True
+            "outtmpl": f"{DOWNLOAD_DIR}/{file_id}.%(ext)s",
+            "quiet": True,
+            "noplaylist": True
         }
 
     def extract():
@@ -105,10 +126,7 @@ async def download_media(
         filename = await asyncio.to_thread(extract)
 
         if not os.path.exists(filename):
-            raise HTTPException(
-                status_code=500,
-                detail="Downloaded file not found"
-            )
+            raise Exception("Downloaded file not found")
 
         background_tasks.add_task(
             delete_file,
@@ -116,13 +134,10 @@ async def download_media(
         )
 
         return FileResponse(
-            filename,
+            path=filename,
             media_type="application/octet-stream",
             filename=os.path.basename(filename)
         )
-
-    except HTTPException:
-        raise
 
     except Exception as e:
         raise HTTPException(
