@@ -5,16 +5,12 @@ from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import database
 
-# Railway Variables में ये values set करें:
-# API_ID, API_HASH, BOT_TOKEN, RONAK_API_URL
+# अपनी डिटेल्स यहाँ डालें
 API_ID = int(os.environ.get("API_ID", "0"))
 API_HASH = os.environ.get("API_HASH", "")
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 
-if not API_ID or not API_HASH or not BOT_TOKEN:
-    raise RuntimeError("Missing Railway variables: API_ID, API_HASH, BOT_TOKEN")
-
-app = Client("RonakKeyBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+app = Client("ROYALKeyBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
 def get_main_menu_keyboard():
     return InlineKeyboardMarkup([
@@ -22,9 +18,9 @@ def get_main_menu_keyboard():
         [InlineKeyboardButton("📊 Usage", callback_data="view_key")],
         [
             InlineKeyboardButton("📚 API Docs", callback_data="api_docs"),
-            InlineKeyboardButton("💬 Support ↗", url="https://t.me/ll_ROYAL_ABOUT_ll")
+            InlineKeyboardButton("💬 Support ↗", url="https://t.me/+SrpDLzodeAsyNGI8")
         ],
-        [InlineKeyboardButton("📢 Channel ↗", url="https://t.me/ll_ROYAL_ABOUT_ll")]
+        [InlineKeyboardButton("📢 Channel ↗", url="https://t.me/MusicXUpdate")]
     ])
 
 @app.on_message(filters.command("start") & filters.private)
@@ -86,7 +82,7 @@ async def on_callback(client, query):
         text = (
             "**API Documentation**\n\n"
             "**Base URL:** `https://web-production-308f7.up.railway.app`\n"
-            "**Primary API:** `https://web-production-308f7.up.railway.app"
+            "**Primary API:** `https://web-production-308f7.up.railway.app/download`\n\n"
             "**Endpoint:** `GET /download`\n"
             "**Params:** `url`, `type` (audio/video), `api_key`\n\n"
             "A ready-to-use Python client (Youtube.py) is available below, "
@@ -124,7 +120,7 @@ from py_yt import VideosSearch, Playlist
 import aiohttp
 
 API_URL = os.environ.get("ROYAL_API_URL", "https://web-production-308f7.up.railway.app")
-API_KEY = os.environ.get("ROYAL_API_KEY", "YOUR_API_KEY_HERE") ## Get This API KEY FROM  @AllQuizXBot
+API_KEY = os.environ.get("ROYAL_API_KEY", "YOUR_API_KEY_HERE") ## Get this API key from your ROYAL bot 
 
 DOWNLOAD_DIR = "downloads"
 
@@ -399,5 +395,6 @@ YouTube = YouTubeAPI()
         )
 
 if __name__ == "__main__":
-    print("Ronak API Bot with File Download Feature Started!")
+    print("ROYAL API Bot with File Download Feature Started!")
     app.run()
+    
