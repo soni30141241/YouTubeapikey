@@ -124,7 +124,7 @@ from py_yt import VideosSearch, Playlist
 import aiohttp
 
 API_URL = os.environ.get("ROYAL_API_URL", "https://web-production-308f7.up.railway.app")
-API_KEY = os.environ.get("ROYAL_API_KEY", "YOUR_API_KEY_HERE") ## Get This API KEY FROM  
+API_KEY = os.environ.get("ROYAL_API_KEY", "YOUR_API_KEY_HERE") ## Get This API KEY FROM  @AllQuizXBot
 
 DOWNLOAD_DIR = "downloads"
 
