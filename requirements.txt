@@ -1,4 +1,5 @@
-fastapi
-uvicorn
+pyrogram
+tgcrypto
+aiohttp
 yt-dlp
-python-multipart
+youtube-search-python
