@@ -1,7 +1,2 @@
-YouTubeapikey/
-├── api.py
-├── bot.py
-├── database.py
-├── requirements.txt
-├── Procfile
-└── nixpacks.toml
+[phases.setup]
+nixPkgs = ["python311", "ffmpeg"]
