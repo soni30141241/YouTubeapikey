@@ -1,85 +1,60 @@
 import os
 import uuid
 import asyncio
-from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 import yt_dlp
 
+import database
+
 
 app = FastAPI(
     title="Royal Fast API",
-    version="2.0.0"
+    version="1.0.0"
 )
 
-# =========================
-# CONFIG
-# =========================
+DOWNLOAD_DIR = "downloads"
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-API_KEY = os.environ.get("ROYAL_API_KEY", "").strip()
-
-DOWNLOAD_DIR = Path("downloads")
-DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
-
-# =========================
-# CLEANUP
-# =========================
-
-def delete_file(path: str):
-    try:
-        if os.path.exists(path):
-            os.remove(path)
-    except Exception:
-        pass
-
-
-# =========================
-# HOME
-# =========================
 
 @app.get("/")
-async def home():
+async def root():
     return {
         "status": "online",
         "message": "Royal Fast API is working!"
     }
 
 
-# =========================
-# HEALTH
-# =========================
-
 @app.get("/health")
 async def health():
     return {
-        "status": "healthy",
-        "api_key_configured": bool(API_KEY)
+        "status": "healthy"
     }
 
 
-# =========================
-# INFO
-# =========================
-
 @app.get("/info")
 async def info(api_key: str):
-    if not API_KEY or api_key != API_KEY:
+    if not database.verify_key(api_key):
         raise HTTPException(
             status_code=401,
-            detail="Invalid API Key"
+            detail="Invalid or expired API key"
         )
 
     return {
         "status": "success",
-        "message": "API Key is valid"
+        "message": "API key is valid",
+        "daily_limit": 3000
     }
 
 
-# =========================
-# DOWNLOAD
-# =========================
+def delete_file(path):
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+    except Exception:
+        pass
+
 
 @app.get("/download")
 async def download(
@@ -89,113 +64,111 @@ async def download(
     api_key: str
 ):
 
-    # API KEY CHECK
-    if not API_KEY:
-        raise HTTPException(
-            status_code=500,
-            detail="API Key is not configured on server"
-        )
-
-    if api_key != API_KEY:
+    if not database.verify_key(api_key):
         raise HTTPException(
             status_code=401,
-            detail="Invalid API Key"
+            detail="Invalid or expired API key"
         )
 
-    # TYPE CHECK
-    if type not in ["video", "audio"]:
+    if type not in ["audio", "video"]:
         raise HTTPException(
             status_code=400,
-            detail="Type must be video or audio"
-        )
-
-    # URL CHECK
-    if not url.startswith(("http://", "https://")):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid URL"
+            detail="type must be audio or video"
         )
 
     file_id = str(uuid.uuid4())
 
+    if type == "audio":
+        output_template = os.path.join(
+            DOWNLOAD_DIR,
+            f"{file_id}.%(ext)s"
+        )
+
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "outtmpl": output_template,
+            "quiet": True,
+            "noplaylist": True,
+            "postprocessors": [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "192"
+                }
+            ]
+        }
+
+    else:
+        output_template = os.path.join(
+            DOWNLOAD_DIR,
+            f"{file_id}.%(ext)s"
+        )
+
+        ydl_opts = {
+            "format": "best",
+            "outtmpl": output_template,
+            "quiet": True,
+            "noplaylist": True
+        }
+
     try:
-
-        if type == "audio":
-
-            output_template = str(
-                DOWNLOAD_DIR / f"{file_id}.%(ext)s"
-            )
-
-            ydl_opts = {
-                "format": "bestaudio/best",
-                "outtmpl": output_template,
-                "noplaylist": True,
-                "quiet": True,
-                "no_warnings": True,
-                "postprocessors": [
-                    {
-                        "key": "FFmpegExtractAudio",
-                        "preferredcodec": "mp3",
-                        "preferredquality": "192",
-                    }
-                ],
-            }
-
-        else:
-
-            output_template = str(
-                DOWNLOAD_DIR / f"{file_id}.%(ext)s"
-            )
-
-            ydl_opts = {
-                "format": "best",
-                "outtmpl": output_template,
-                "noplaylist": True,
-                "quiet": True,
-                "no_warnings": True,
-            }
-
-        # DOWNLOAD
         def run_download():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
 
         await asyncio.to_thread(run_download)
 
-        # FIND GENERATED FILE
-        files = list(
-            DOWNLOAD_DIR.glob(f"{file_id}.*")
-        )
-
-        if not files:
-            raise Exception("Downloaded file not found")
-
-        file_path = files[0]
-
-        # DELETE AFTER RESPONSE
-        background_tasks.add_task(
-            delete_file,
-            str(file_path)
-        )
-
-        if type == "audio":
-            media_type = "audio/mpeg"
-        else:
-            media_type = "video/mp4"
-
-        return FileResponse(
-            path=str(file_path),
-            media_type=media_type,
-            filename=file_path.name
-        )
-
     except Exception as e:
-
-        # Cleanup on error
-        for file in DOWNLOAD_DIR.glob(f"{file_id}.*"):
-            delete_file(str(file))
-
         raise HTTPException(
             status_code=500,
             detail=f"Download failed: {str(e)}"
+        )
+
+    if type == "audio":
+        file_path = os.path.join(
+            DOWNLOAD_DIR,
+            f"{file_id}.mp3"
+        )
+        media_type = "audio/mpeg"
+        filename = "royal_audio.mp3"
+
+    else:
+        possible_files = []
+
+        for filename in os.listdir(DOWNLOAD_DIR):
+            if filename.startswith(file_id + "."):
+                possible_files.append(filename)
+
+        if not possible_files:
+            raise HTTPException(
+                status_code=500,
+                detail="Downloaded file not found"
+            )
+
+        file_path = os.path.join(
+            DOWNLOAD_DIR,
+            possible_files[0]
+        )
+
+        media_type = "video/mp4"
+        filename = "royal_video.mp4"
+
+    if not os.path.exists(file_path):
+        raise HTTPException(
+            status_code=500,
+            detail="Downloaded file not found"
+        )
+
+    database.record_usage(api_key, type)
+
+    background_tasks.add_task(
+        delete_file,
+        file_path
+    )
+
+    return FileResponse(
+        path=file_path,
+        media_type=media_type,
+        filename=filename,
+        background=background_tasks
         )
