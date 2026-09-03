@@ -1,258 +1,116 @@
 import os
-import glob
+import asyncio
 import time
 import uuid
-import asyncio
+from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
-
 import yt_dlp
 import database
 
-
-app = FastAPI(
-    title="ROYAL Fast API",
-    version="1.0.0"
-)
-
-DOWNLOAD_DIR = "downloads"
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-
+app = FastAPI(title="Royal Fast API")
+DOWNLOAD_DIR = Path(os.getenv("DOWNLOAD_DIR", "/tmp/royal_downloads"))
+DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+COOKIE_FILE = os.getenv("YOUTUBE_COOKIES_FILE", "/data/cookies.txt")
 
 @app.on_event("startup")
 async def startup():
     await database.init_db()
 
-
 def delete_file(path: str):
     try:
-        if os.path.exists(path):
-            os.remove(path)
+        p = Path(path)
+        if p.exists(): p.unlink()
     except Exception:
         pass
 
+def valid_youtube_url(url: str) -> bool:
+    try:
+        host = (urlparse(url).hostname or "").lower()
+        return host in {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "www.youtube-nocookie.com"}
+    except Exception:
+        return False
 
-def find_downloaded_file(base_path: str):
-    files = glob.glob(base_path + ".*")
-
-    valid_files = [
-        f for f in files
-        if not f.endswith(".part")
-        and not f.endswith(".ytdl")
-    ]
-
-    if not valid_files:
-        return None
-
-    return max(valid_files, key=os.path.getsize)
-
+def find_output_file(prefix: Path):
+    files = [p for p in DOWNLOAD_DIR.glob(f"{prefix.name}.*") if p.is_file()]
+    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return files[0] if files else None
 
 @app.get("/")
 async def root():
-    return {
-        "status": "online",
-        "message": "Royal Fast API is working!"
-    }
-
+    return {"name": "Royal Fast API", "status": "online", "docs": "/docs", "health": "/health"}
 
 @app.get("/health")
 async def health():
-    return {
-        "status": "healthy"
-    }
-
+    return {"status": "healthy"}
 
 @app.get("/info")
-async def info(api_key: str):
-    is_valid, msg = await database.verify_key(api_key)
-
-    if not is_valid:
-        raise HTTPException(
-            status_code=403,
-            detail=msg
-        )
-
-    return {
-        "status": "valid",
-        "message": "API key is valid"
-    }
-
+async def info():
+    return {"name": "Royal Fast API", "youtube_cookies_configured": os.path.isfile(COOKIE_FILE)}
 
 @app.get("/download")
-async def download_media(
-    url: str,
-    type: str,
-    api_key: str,
-    background_tasks: BackgroundTasks
-):
-
-    # =========================
-    # API KEY CHECK
-    # =========================
-
+async def download_media(url: str, type: str, api_key: str, background_tasks: BackgroundTasks):
     is_valid, msg = await database.verify_key(api_key)
-
     if not is_valid:
-        raise HTTPException(
-            status_code=403,
-            detail=msg
-        )
+        raise HTTPException(status_code=403, detail=msg)
+    if type not in {"audio", "video"}:
+        raise HTTPException(status_code=400, detail="type must be audio or video")
+    if not valid_youtube_url(url):
+        raise HTTPException(status_code=400, detail="Please provide a valid YouTube URL")
 
-    # =========================
-    # TYPE CHECK
-    # =========================
-
-    if type not in ["audio", "video"]:
-        raise HTTPException(
-            status_code=400,
-            detail="type must be audio or video"
-        )
-
-    # =========================
-    # URL CHECK
-    # =========================
-
-    if not url.startswith(("http://", "https://")):
-        raise HTTPException(
-            status_code=400,
-            detail="Please provide a valid YouTube URL"
-        )
-
-    # =========================
-    # UNIQUE FILE
-    # =========================
-
-    file_id = str(uuid.uuid4())
-
-    base_path = os.path.join(
-        DOWNLOAD_DIR,
-        file_id
-    )
-
-    # =========================
-    # YT-DLP OPTIONS
-    # =========================
+    job_id = uuid.uuid4().hex
+    output_base = DOWNLOAD_DIR / job_id
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "outtmpl": str(output_base) + ".%(ext)s",
+        "retries": 2,
+        "fragment_retries": 2,
+        "socket_timeout": 30,
+    }
+    if os.path.isfile(COOKIE_FILE):
+        ydl_opts["cookiefile"] = COOKIE_FILE
 
     if type == "audio":
-
-        ydl_opts = {
+        ydl_opts.update({
             "format": "bestaudio/best",
-
-            "outtmpl": base_path + ".%(ext)s",
-
-            "quiet": True,
-            "noplaylist": True,
-
-            "postprocessors": [
-                {
-                    "key": "FFmpegExtractAudio",
-                    "preferredcodec": "mp3",
-                    "preferredquality": "192",
-                }
-            ],
-        }
-
+            "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}],
+        })
     else:
+        ydl_opts.update({"format": "bestvideo*+bestaudio/best", "merge_output_format": "mp4"})
 
-        ydl_opts = {
-            "format": "best",
-
-            "outtmpl": base_path + ".%(ext)s",
-
-            "quiet": True,
-            "noplaylist": True,
-        }
-
-    # =========================
-    # OPTIONAL COOKIES
-    # =========================
-
-    cookie_file = os.getenv(
-        "YOUTUBE_COOKIES_FILE",
-        "/data/cookies.txt"
-    )
-
-    if os.path.exists(cookie_file):
-        ydl_opts["cookiefile"] = cookie_file
-
-    # =========================
-    # DOWNLOAD
-    # =========================
-
-    start_time = time.perf_counter()
-
-    def extract():
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-
+    started = time.perf_counter()
     try:
-
+        def extract():
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
         await asyncio.to_thread(extract)
-
     except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ERROR: {e}")
 
-        raise HTTPException(
-            status_code=500,
-            detail=str(e)
-        )
+    elapsed = max(time.perf_counter() - started, 0.001)
+    output_file = find_output_file(output_base)
+    if not output_file:
+        raise HTTPException(status_code=500, detail="Download completed but output file was not found.")
 
-    # =========================
-    # FIND FILE
-    # =========================
-
-    filename = find_downloaded_file(base_path)
-
-    if not filename or not os.path.exists(filename):
-
-        raise HTTPException(
-            status_code=500,
-            detail="Download completed but output file was not found"
-        )
-
-    # =========================
-    # METRICS
-    # =========================
-
-    elapsed = time.perf_counter() - start_time
-
-    file_size_bytes = os.path.getsize(filename)
-
-    file_size_mb = file_size_bytes / (
-        1024 * 1024
-    )
-
-    speed_mbps = (
-        file_size_mb / elapsed
-        if elapsed > 0
-        else 0
-    )
-
-    # =========================
-    # AUTO DELETE
-    # =========================
-
-    background_tasks.add_task(
-        delete_file,
-        filename
-    )
-
-    # =========================
-    # RESPONSE
-    # =========================
-
-    headers = {
-        "X-File-Size-Bytes": str(file_size_bytes),
-        "X-File-Size-MB": f"{file_size_mb:.2f}",
-        "X-Download-Time": f"{elapsed:.2f}",
-        "X-Speed-MBps": f"{speed_mbps:.2f}",
-        "X-Media-Type": type,
-    }
+    size_bytes = output_file.stat().st_size
+    size_mb = size_bytes / (1024 * 1024)
+    speed_mbps = size_mb / elapsed
+    background_tasks.add_task(delete_file, str(output_file))
 
     return FileResponse(
-        filename,
-        media_type="application/octet-stream",
-        filename=os.path.basename(filename),
-        headers=headers
-        )
+        path=str(output_file),
+        media_type="audio/mpeg" if type == "audio" else "video/mp4",
+        filename=output_file.name,
+        headers={
+            "X-File-Size-Bytes": str(size_bytes),
+            "X-File-Size-MB": f"{size_mb:.2f}",
+            "X-Download-Time": f"{elapsed:.2f}s",
+            "X-Speed-MBps": f"{speed_mbps:.2f}",
+            "X-Media-Type": type,
+        },
+    )
+    
