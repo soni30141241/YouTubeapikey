@@ -1,20 +1,25 @@
 import aiosqlite
 from datetime import datetime, timedelta
 import secrets
+import os
 
-DB_NAME = "ROYAL.db"
+# Railway Volume par database
+DB_DIR = "/data"
+DB_NAME = os.path.join(DB_DIR, "ROYAL.db")
 
 
 # ==============================
 # DATABASE INITIALIZE
 # ==============================
 async def init_db():
+    os.makedirs(DB_DIR, exist_ok=True)
+
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
-                api_key TEXT,
-                expiry_date TIMESTAMP
+                api_key TEXT NOT NULL,
+                expiry_date TEXT NOT NULL
             )
         """)
 
@@ -25,10 +30,17 @@ async def init_db():
 # CREATE / GET API KEY
 # ==============================
 async def get_or_create_key(user_id: int):
+
+    await init_db()
+
     async with aiosqlite.connect(DB_NAME) as db:
 
         cursor = await db.execute(
-            "SELECT api_key, expiry_date FROM users WHERE user_id = ?",
+            """
+            SELECT api_key, expiry_date
+            FROM users
+            WHERE user_id = ?
+            """,
             (user_id,)
         )
 
@@ -40,6 +52,7 @@ async def get_or_create_key(user_id: int):
         # EXISTING USER
         # ==============================
         if row:
+
             api_key, expiry_str = row
 
             try:
@@ -50,9 +63,9 @@ async def get_or_create_key(user_id: int):
             # ==============================
             # KEY EXPIRED
             # ==============================
-            if now > expiry_date:
+            if now >= expiry_date:
 
-                new_key = f"ROYAL_{secrets.token_hex(8)}"
+                new_key = "ROYAL_" + secrets.token_hex(8)
                 new_expiry = now + timedelta(days=30)
 
                 await db.execute(
@@ -80,7 +93,7 @@ async def get_or_create_key(user_id: int):
         # ==============================
         # NEW USER
         # ==============================
-        new_key = f"ROYAL_{secrets.token_hex(8)}"
+        new_key = "ROYAL_" + secrets.token_hex(8)
         new_expiry = now + timedelta(days=30)
 
         await db.execute(
@@ -109,6 +122,8 @@ async def verify_key(api_key: str):
     if not api_key:
         return False, "API Key is required"
 
+    await init_db()
+
     async with aiosqlite.connect(DB_NAME) as db:
 
         cursor = await db.execute(
@@ -122,9 +137,7 @@ async def verify_key(api_key: str):
 
         row = await cursor.fetchone()
 
-        # ==============================
-        # KEY NOT FOUND
-        # ==============================
+        # Key not found
         if not row:
             return False, "Invalid API Key"
 
@@ -133,15 +146,10 @@ async def verify_key(api_key: str):
         except Exception:
             return False, "Invalid API Key expiry date"
 
-        # ==============================
-        # KEY EXPIRED
-        # ==============================
-        if datetime.now() > expiry_date:
-            return False, "API Key Expired! Please go to bot and get a new one."
+        # Key expired
+        if datetime.now() >= expiry_date:
+            return False, "API Key Expired! Please get a new key."
 
-        # ==============================
-        # VALID KEY
-        # ==============================
         return True, "Valid"
 
 
@@ -150,10 +158,15 @@ async def verify_key(api_key: str):
 # ==============================
 async def delete_key(api_key: str):
 
+    await init_db()
+
     async with aiosqlite.connect(DB_NAME) as db:
 
         await db.execute(
-            "DELETE FROM users WHERE api_key = ?",
+            """
+            DELETE FROM users
+            WHERE api_key = ?
+            """,
             (api_key,)
         )
 
@@ -164,6 +177,8 @@ async def delete_key(api_key: str):
 # GET ALL USERS
 # ==============================
 async def get_all_users():
+
+    await init_db()
 
     async with aiosqlite.connect(DB_NAME) as db:
 
