@@ -18,9 +18,9 @@ def get_main_menu_keyboard():
         [InlineKeyboardButton("📊 Usage", callback_data="view_key")],
         [
             InlineKeyboardButton("📚 API Docs", callback_data="api_docs"),
-            InlineKeyboardButton("💬 Support ↗", url="https://t.me/+SrpDLzodeAsyNGI8")
+            InlineKeyboardButton("💬 Support ↗", url="https://t.me/ll_ROYAL_ABOUT_ll")
         ],
-        [InlineKeyboardButton("📢 Channel ↗", url="https://t.me/MusicXUpdate")]
+        [InlineKeyboardButton("📢 Channel ↗", url="https://t.me/ll_ROYAL_ABOUT_ll")]
     ])
 
 @app.on_message(filters.command("start") & filters.private)
