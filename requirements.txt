@@ -1,7 +1,4 @@
 fastapi
 uvicorn
-pyrogram
-tgcrypto
-aiosqlite
 yt-dlp
-
+python-multipart
