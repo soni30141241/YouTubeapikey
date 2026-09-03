@@ -31,9 +31,7 @@ async def start_cmd(client, message):
     await message.reply_text(text, reply_markup=get_main_menu_keyboard())
 
 async def render_key_page(query, user_id):
-    api_key, expiry_date, created_date, _ = await database.get_or_create_key(user_id)
-
-    created_str = created_date.strftime("%d %b %Y, %I:%M %p IST")
+    api_key, expiry_date, is_new = await database.get_or_create_key(user_id)
 
     text = (
         "🔑 **Your API Key**\n\n"
@@ -41,7 +39,6 @@ async def render_key_page(query, user_id):
         f"`{api_key}`\n\n"
         "**Status:** 🟢 Active\n"
         "**Daily Limit:** 3,000\n\n"
-        f"**Created:** {created_str}\n"
         "**Expires:** Never\n"
         "**Days Left:** ♾️ Permanent"
     )
@@ -66,8 +63,8 @@ async def on_callback(client, query):
         await query.answer()
 
     elif data == "view_key":
-        await render_key_page(query, user_id)
         await query.answer()
+        await render_key_page(query, user_id)
 
     elif data == "usage":
         text = (
@@ -382,4 +379,4 @@ YouTube = YouTubeAPI()
 if __name__ == "__main__":
     print("ROYAL API Bot with File Download Feature Started!")
     app.run()
-        
+    
