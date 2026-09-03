@@ -1,2 +1,5 @@
-[phases.setup]
-nixPkgs = ["ffmpeg"]
+api.py
+database.py
+requirements.txt
+Procfile
+nixpacks.toml
