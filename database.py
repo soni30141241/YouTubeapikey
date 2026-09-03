@@ -131,4 +131,4 @@ async def get_all_users():
             "SELECT user_id, api_key, expiry_date FROM users ORDER BY user_id DESC"
         )
         return await cursor.fetchall()
-            
+        
