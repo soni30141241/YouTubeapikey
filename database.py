@@ -4,7 +4,7 @@ import secrets
 import os
 
 # Railway Volume par database
-DB_DIR = "/data"
+DB_NAME = "/data/ROYAL.db"
 DB_NAME = os.path.join(DB_DIR, "ROYAL.db")
 
 
