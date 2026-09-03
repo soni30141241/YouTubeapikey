@@ -1,7 +1,8 @@
-pyrogram==2.0.106
-tgcrypto
-aiohttp
-yt-dlp
-youtube-search-python
 fastapi
-uvicorn[standard]
+uvicorn
+pyrogram
+tgcrypto
+aiosqlite
+yt-dlp
+aiohttp
+youtube-search-python
