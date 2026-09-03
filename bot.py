@@ -48,13 +48,13 @@ def get_main_menu_keyboard():
             ),
             InlineKeyboardButton(
                 "💬 Support ↗",
-                url="https://t.me/+SrpDLzodeAsyNGI8"
+                url="https://t.me/ll_ROYAL_ABOUT_ll"
             )
         ],
         [
             InlineKeyboardButton(
                 "📢 Channel ↗",
-                url="https://t.me/MusicXUpdate"
+                url="https://t.me/ll_ROYAL_ABOUT_ll"
             )
         ]
     ])
