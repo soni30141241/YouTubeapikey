@@ -5,16 +5,12 @@ from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import database
 
-# Railway Variables में ये values set करें:
-# API_ID, API_HASH, BOT_TOKEN, RONAK_API_URL
+# अपनी डिटेल्स यहाँ डालें
 API_ID = int(os.environ.get("API_ID", "0"))
 API_HASH = os.environ.get("API_HASH", "")
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 
-if not API_ID or not API_HASH or not BOT_TOKEN:
-    raise RuntimeError("Missing Railway variables: API_ID, API_HASH, BOT_TOKEN")
-
-app = Client("RonakKeyBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+app = Client("ROYALKeyBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
 def get_main_menu_keyboard():
     return InlineKeyboardMarkup([
@@ -36,37 +32,36 @@ async def start_cmd(client, message):
 
 async def render_key_page(query, user_id):
     api_key, expiry_date, _ = await database.get_or_create_key(user_id)
-    now = datetime.now()
-    days_left = max((expiry_date - now).days, 0)
-        
-    expiry_str = expiry_date.strftime("%d %b %Y, %I:%M %p IST")
-    created_date = expiry_date - timedelta(days=30)
-    created_str = created_date.strftime("%d %b %Y, %I:%M %p IST")
 
     text = (
-        "🔑 **Your API Key**\n\n"
-        "**API Key:**\n"
-        f"`{api_key}`\n"
-        "**Status:** 🟢 Active\n"
-        "**Daily Limit:** 3,000\n\n"
-        "**Today's Usage:**\n"
-        "📊 Requests: 0\n"
-        "🎵 Audio: 0\n"
-        "🎬 Video: 0\n\n"
-        "**All-Time Usage:**\n"
-        "📊 Total Requests: 0\n"
-        "🎵 Total Audio: 0\n"
-        "🎬 Total Video: 0\n\n"
-        f"**Created:** {created_str}\n"
-        f"**Expires:** {expiry_str}\n"
-        f"**Days Left:** {days_left} days"
+        "🔑 **Your API Key**\\n\\n"
+        "**API Key:**\\n"
+        f"`{api_key}`\\n"
+        "**Status:** 🟢 Active\\n"
+        "**Daily Limit:** 3,000\\n\\n"
+        "**Today's Usage:**\\n"
+        "📊 Requests: 0\\n"
+        "🎵 Audio: 0\\n"
+        "🎬 Video: 0\\n\\n"
+        "**All-Time Usage:**\\n"
+        "📊 Total Requests: 0\\n"
+        "🎵 Total Audio: 0\\n"
+        "🎬 Total Video: 0\\n\\n"
+        "**Key Type:** ♾️ Permanent\\n"
+        "**Expires:** Never"
     )
-    
+
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔄 Renew", callback_data="action_renew")],
-        [InlineKeyboardButton("🔄 Revoke & Get New Key", callback_data="action_revoke")],
-        [InlineKeyboardButton("⬅️ Back", callback_data="main_menu")]
+        [InlineKeyboardButton(
+            "🔄 Revoke & Get New Key",
+            callback_data="action_revoke"
+        )],
+        [InlineKeyboardButton(
+            "⬅️ Back",
+            callback_data="main_menu"
+        )]
     ])
+
     await query.message.edit_text(text, reply_markup=keyboard)
 
 
@@ -85,8 +80,8 @@ async def on_callback(client, query):
     elif data == "api_docs":
         text = (
             "**API Documentation**\n\n"
-            "**Base URL:** `https://web-production-308f7.up.railway.app`\n"
-            "**Primary API:** `https://web-production-308f7.up.railway.app/download`\n\n"
+            "**Base URL:** `https://youtubeapikey-production-701a.up.railway.app`\n"
+            "**Primary API:** `https://youtubeapikey-production-701a.up.railway.app/download`\n\n"
             "**Endpoint:** `GET /download`\n"
             "**Params:** `url`, `type` (audio/video), `api_key`\n\n"
             "A ready-to-use Python client (Youtube.py) is available below, "
@@ -98,16 +93,14 @@ async def on_callback(client, query):
         ])
         await query.message.edit_text(text, reply_markup=keyboard)
 
-    elif data in ["action_renew", "action_revoke"]:
-        api_key, expiry_date, is_new = await database.get_or_create_key(user_id)
-        if not is_new:
-            now = datetime.now()
-            days_left = max((expiry_date - now).days, 0)
-            await query.answer(f"⚠️ आपकी Key अभी वैलिड है!\nनई Key {days_left} दिन बाद ही जनरेट की जा सकती है।", show_alert=True)
-        else:
-            await query.answer("✅ आपकी पुरानी Key एक्सपायर हो गई थी। नई Key जनरेट कर दी गई है!", show_alert=True)
-            await render_key_page(query, user_id)
-            
+    elif data == "action_revoke":
+        await database.revoke_and_get_new_key(user_id)
+        await query.answer(
+            "✅ Old key revoked. New permanent key created.",
+            show_alert=True
+        )
+        await render_key_page(query, user_id)
+
     # यहाँ से Youtube.py फाइल भेजने का लॉजिक शुरू होता है
     elif data == "dl_file":
         await query.answer("Downloading file...", show_alert=False)
@@ -120,11 +113,11 @@ from typing import Union
 import yt_dlp
 from pyrogram.enums import MessageEntityType
 from pyrogram.types import Message
-from py_yt import VideosSearch, Playlist
+from youtubesearchpython import VideosSearch, Playlist
 import aiohttp
 
-API_URL = os.environ.get("RONAK_API_URL", "https://web-production-308f7.up.railway.app")
-API_KEY = os.environ.get("RONAK_API_KEY", "YOUR_API_KEY_HERE") ## Get This API KEY FROM @RonakKeyBot 
+API_URL = os.environ.get("ROYAL_API_URL", "https://youtubeapikey-production-701a.up.railway.app")
+API_KEY = os.environ.get("ROYAL_API_KEY", "YOUR_API_KEY_HERE") ## Get this API key from your ROYAL bot 
 
 DOWNLOAD_DIR = "downloads"
 
@@ -399,5 +392,6 @@ YouTube = YouTubeAPI()
         )
 
 if __name__ == "__main__":
-    print("Ronak API Bot with File Download Feature Started!")
+    print("ROYAL API Bot with File Download Feature Started!")
     app.run()
+        
