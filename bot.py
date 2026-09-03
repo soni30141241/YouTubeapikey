@@ -33,6 +33,9 @@ async def start_cmd(client, message):
 async def render_key_page(query, user_id):
     api_key, expiry_date, _ = await database.get_or_create_key(user_id)
 
+    days_left = max(0, (expiry_date - datetime.now()).days)
+    expires_text = expiry_date.strftime("%d %b %Y")
+
     text = (
         "🔑 **Your API Key**\\n\\n"
         "**API Key:**\\n"
@@ -47,8 +50,9 @@ async def render_key_page(query, user_id):
         "📊 Total Requests: 0\\n"
         "🎵 Total Audio: 0\\n"
         "🎬 Total Video: 0\\n\\n"
-        "**Key Type:** ♾️ Permanent\\n"
-        "**Expires:** Never"
+        "**Key Type:** 🗓️ 30 Days\\n"
+        f"**Days Left:** {days_left}\\n"
+        f"**Expires:** {expires_text}"
     )
 
     keyboard = InlineKeyboardMarkup([
@@ -394,4 +398,4 @@ YouTube = YouTubeAPI()
 if __name__ == "__main__":
     print("ROYAL API Bot with File Download Feature Started!")
     app.run()
-        
+    
