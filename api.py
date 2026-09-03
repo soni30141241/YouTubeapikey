@@ -1,116 +1,189 @@
 import os
 import asyncio
-import time
+import glob
 import uuid
-from pathlib import Path
-from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
+
 import yt_dlp
 import database
 
-app = FastAPI(title="Royal Fast API")
-DOWNLOAD_DIR = Path(os.getenv("DOWNLOAD_DIR", "/tmp/royal_downloads"))
-DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-COOKIE_FILE = os.getenv("YOUTUBE_COOKIES_FILE", "/data/cookies.txt")
+
+app = FastAPI(
+    title="Royal Fast API",
+    version="1.0.0"
+)
+
+DOWNLOAD_DIR = "downloads"
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
+
+# =========================
+# STARTUP
+# =========================
 
 @app.on_event("startup")
 async def startup():
     await database.init_db()
 
+
+# =========================
+# DELETE FILE
+# =========================
+
 def delete_file(path: str):
     try:
-        p = Path(path)
-        if p.exists(): p.unlink()
+        if os.path.exists(path):
+            os.remove(path)
     except Exception:
         pass
 
-def valid_youtube_url(url: str) -> bool:
-    try:
-        host = (urlparse(url).hostname or "").lower()
-        return host in {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "www.youtube-nocookie.com"}
-    except Exception:
-        return False
 
-def find_output_file(prefix: Path):
-    files = [p for p in DOWNLOAD_DIR.glob(f"{prefix.name}.*") if p.is_file()]
-    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    return files[0] if files else None
+# =========================
+# HOME
+# =========================
 
 @app.get("/")
-async def root():
-    return {"name": "Royal Fast API", "status": "online", "docs": "/docs", "health": "/health"}
+async def home():
+    return {
+        "status": "online",
+        "message": "Royal Fast API is working!"
+    }
+
+
+# =========================
+# HEALTH
+# =========================
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy"}
+    return {
+        "status": "ok"
+    }
+
+
+# =========================
+# INFO
+# =========================
 
 @app.get("/info")
 async def info():
-    return {"name": "Royal Fast API", "youtube_cookies_configured": os.path.isfile(COOKIE_FILE)}
+    return {
+        "name": "Royal Fast API",
+        "version": "1.0.0",
+        "status": "online",
+        "endpoints": [
+            "/",
+            "/health",
+            "/info",
+            "/download",
+            "/docs"
+        ]
+    }
+
+
+# =========================
+# DOWNLOAD
+# =========================
 
 @app.get("/download")
-async def download_media(url: str, type: str, api_key: str, background_tasks: BackgroundTasks):
+async def download_media(
+    url: str,
+    type: str,
+    api_key: str,
+    background_tasks: BackgroundTasks
+):
+
+    # Check API key
     is_valid, msg = await database.verify_key(api_key)
+
     if not is_valid:
-        raise HTTPException(status_code=403, detail=msg)
-    if type not in {"audio", "video"}:
-        raise HTTPException(status_code=400, detail="type must be audio or video")
-    if not valid_youtube_url(url):
-        raise HTTPException(status_code=400, detail="Please provide a valid YouTube URL")
+        raise HTTPException(
+            status_code=403,
+            detail=msg
+        )
 
-    job_id = uuid.uuid4().hex
-    output_base = DOWNLOAD_DIR / job_id
-    ydl_opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "noplaylist": True,
-        "outtmpl": str(output_base) + ".%(ext)s",
-        "retries": 2,
-        "fragment_retries": 2,
-        "socket_timeout": 30,
-    }
-    if os.path.isfile(COOKIE_FILE):
-        ydl_opts["cookiefile"] = COOKIE_FILE
+    # Check type
+    if type not in ["video", "audio"]:
+        raise HTTPException(
+            status_code=400,
+            detail="type must be 'video' or 'audio'"
+        )
 
-    if type == "audio":
-        ydl_opts.update({
-            "format": "bestaudio/best",
-            "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}],
-        })
+    # Unique file name
+    file_id = uuid.uuid4().hex
+
+    if type == "video":
+
+        ydl_opts = {
+            "format": "best",
+            "outtmpl": f"{DOWNLOAD_DIR}/{file_id}.%(ext)s",
+            "quiet": True,
+            "noplaylist": True
+        }
+
     else:
-        ydl_opts.update({"format": "bestvideo*+bestaudio/best", "merge_output_format": "mp4"})
 
-    started = time.perf_counter()
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "outtmpl": f"{DOWNLOAD_DIR}/{file_id}.%(ext)s",
+            "quiet": True,
+            "noplaylist": True,
+            "postprocessors": [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "192"
+                }
+            ]
+        }
+
+    def extract():
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+
+            info = ydl.extract_info(
+                url,
+                download=True
+            )
+
+            # FFmpeg may change the final extension (audio -> mp3).
+            files = glob.glob(os.path.join(DOWNLOAD_DIR, f"{file_id}.*"))
+            files = [p for p in files if os.path.isfile(p)]
+            if not files:
+                return None
+
+            if type == "audio":
+                mp3 = os.path.join(DOWNLOAD_DIR, f"{file_id}.mp3")
+                if os.path.isfile(mp3):
+                    return mp3
+
+            return files[0]
+
     try:
-        def extract():
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-        await asyncio.to_thread(extract)
+
+        filename = await asyncio.to_thread(extract)
+
+        # Make sure file exists
+        if not filename or not os.path.isfile(filename):
+            raise Exception("Downloaded file not found")
+
+        # Delete after response
+        background_tasks.add_task(
+            delete_file,
+            filename
+        )
+
+        return FileResponse(
+            path=filename,
+            media_type="application/octet-stream",
+            filename=os.path.basename(filename)
+        )
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"ERROR: {e}")
 
-    elapsed = max(time.perf_counter() - started, 0.001)
-    output_file = find_output_file(output_base)
-    if not output_file:
-        raise HTTPException(status_code=500, detail="Download completed but output file was not found.")
-
-    size_bytes = output_file.stat().st_size
-    size_mb = size_bytes / (1024 * 1024)
-    speed_mbps = size_mb / elapsed
-    background_tasks.add_task(delete_file, str(output_file))
-
-    return FileResponse(
-        path=str(output_file),
-        media_type="audio/mpeg" if type == "audio" else "video/mp4",
-        filename=output_file.name,
-        headers={
-            "X-File-Size-Bytes": str(size_bytes),
-            "X-File-Size-MB": f"{size_mb:.2f}",
-            "X-Download-Time": f"{elapsed:.2f}s",
-            "X-Speed-MBps": f"{speed_mbps:.2f}",
-            "X-Media-Type": type,
-        },
-    )
-    
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+            )

@@ -4,5 +4,4 @@ pyrogram
 tgcrypto
 aiosqlite
 yt-dlp
-aiohttp
-youtube-search-python
+
