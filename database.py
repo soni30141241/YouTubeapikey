@@ -100,6 +100,16 @@ async def verify_key(api_key: str):
             return False, "API Key expired. Please generate a new key."
         return True, "Valid"
 
+async def get_user_id_by_key(api_key: str):
+    if not api_key:
+        return None
+    api_key = str(api_key).strip().strip("`\"'")
+    await init_db()
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("SELECT user_id FROM users WHERE api_key=?", (api_key,))
+        row = await cursor.fetchone()
+        return row[0] if row else None
+
 async def get_usage(user_id: int):
     await init_db()
     today = now_ist().strftime("%Y-%m-%d")

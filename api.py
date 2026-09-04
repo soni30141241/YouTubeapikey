@@ -10,19 +10,17 @@ from fastapi.responses import FileResponse
 import yt_dlp
 import database
 
-app = FastAPI(title="Royal Fast API")
+app = FastAPI(title="Royal Fast Audio API")
 DOWNLOAD_DIR = Path(os.getenv("DOWNLOAD_DIR", "/tmp/royal_downloads"))
 DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-COOKIE_FILE = os.getenv("YOUTUBE_COOKIES_FILE", "/data/cookies.txt")
 
-@app.on_event("startup")
-async def startup():
-    await database.init_db()
+# Cookies are intentionally NOT used.
 
 def delete_file(path: str):
     try:
         p = Path(path)
-        if p.exists(): p.unlink()
+        if p.exists():
+            p.unlink()
     except Exception:
         pass
 
@@ -38,9 +36,13 @@ def find_output_file(prefix: Path):
     files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     return files[0] if files else None
 
+@app.on_event("startup")
+async def startup():
+    await database.init_db()
+
 @app.get("/")
 async def root():
-    return {"name": "Royal Fast API", "status": "online", "docs": "/docs", "health": "/health"}
+    return {"name": "Royal Fast Audio API", "status": "online", "docs": "/docs", "health": "/health", "audio": "/audio"}
 
 @app.get("/health")
 async def health():
@@ -48,17 +50,20 @@ async def health():
 
 @app.get("/info")
 async def info():
-    return {"name": "Royal Fast API", "youtube_cookies_configured": os.path.isfile(COOKIE_FILE)}
+    return {"name": "Royal Fast Audio API", "cookies_required": False, "audio_endpoint": "/audio"}
 
-@app.get("/download")
-async def download_media(url: str, type: str, api_key: str, background_tasks: BackgroundTasks):
+async def make_audio(url: str, api_key: str, background_tasks: BackgroundTasks):
     is_valid, msg = await database.verify_key(api_key)
     if not is_valid:
         raise HTTPException(status_code=403, detail=msg)
-    if type not in {"audio", "video"}:
-        raise HTTPException(status_code=400, detail="type must be audio or video")
     if not valid_youtube_url(url):
         raise HTTPException(status_code=400, detail="Please provide a valid YouTube URL")
+
+    user_id = await database.get_user_id_by_key(api_key)
+    if user_id is not None:
+        usage = await database.get_usage(user_id)
+        if usage["requests"] >= database.DAILY_LIMIT:
+            raise HTTPException(status_code=429, detail="Daily API limit reached")
 
     job_id = uuid.uuid4().hex
     output_base = DOWNLOAD_DIR / job_id
@@ -67,20 +72,18 @@ async def download_media(url: str, type: str, api_key: str, background_tasks: Ba
         "no_warnings": True,
         "noplaylist": True,
         "outtmpl": str(output_base) + ".%(ext)s",
+        "format": "bestaudio/best",
         "retries": 2,
         "fragment_retries": 2,
         "socket_timeout": 30,
+        "concurrent_fragment_downloads": 4,
+        "extractor_args": {"youtube": {"player_client": ["android_vr", "web"]}},
+        "postprocessors": [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": "192",
+        }],
     }
-    if os.path.isfile(COOKIE_FILE):
-        ydl_opts["cookiefile"] = COOKIE_FILE
-
-    if type == "audio":
-        ydl_opts.update({
-            "format": "bestaudio/best",
-            "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}],
-        })
-    else:
-        ydl_opts.update({"format": "bestvideo*+bestaudio/best", "merge_output_format": "mp4"})
 
     started = time.perf_counter()
     try:
@@ -89,27 +92,47 @@ async def download_media(url: str, type: str, api_key: str, background_tasks: Ba
                 ydl.download([url])
         await asyncio.to_thread(extract)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"ERROR: {e}")
+        raise HTTPException(status_code=500, detail=f"Audio extraction failed: {e}")
 
     elapsed = max(time.perf_counter() - started, 0.001)
-    output_file = find_output_file(output_base)
+    output_file = DOWNLOAD_DIR / f"{job_id}.mp3"
+    if not output_file.exists():
+        output_file = find_output_file(output_base)
     if not output_file:
-        raise HTTPException(status_code=500, detail="Download completed but output file was not found.")
+        raise HTTPException(status_code=500, detail="Audio created but output file was not found.")
+
+    if user_id is not None:
+        await database.add_usage(user_id, "request")
+        await database.add_usage(user_id, "audio")
 
     size_bytes = output_file.stat().st_size
     size_mb = size_bytes / (1024 * 1024)
-    speed_mbps = size_mb / elapsed
     background_tasks.add_task(delete_file, str(output_file))
 
     return FileResponse(
         path=str(output_file),
-        media_type="audio/mpeg" if type == "audio" else "video/mp4",
+        media_type="audio/mpeg",
         filename=output_file.name,
         headers={
+            "Cache-Control": "no-store",
             "X-File-Size-Bytes": str(size_bytes),
             "X-File-Size-MB": f"{size_mb:.2f}",
-            "X-Download-Time": f"{elapsed:.2f}s",
-            "X-Speed-MBps": f"{speed_mbps:.2f}",
-            "X-Media-Type": type,
+            "X-Processing-Time": f"{elapsed:.2f}s",
+            "X-Media-Type": "audio",
         },
     )
+
+@app.get("/audio")
+async def audio(url: str, api_key: str, background_tasks: BackgroundTasks):
+    return await make_audio(url, api_key, background_tasks)
+
+@app.get("/api/audio")
+async def api_audio(url: str, api_key: str, background_tasks: BackgroundTasks):
+    return await make_audio(url, api_key, background_tasks)
+
+# Backward-compatible endpoint: audio only.
+@app.get("/download")
+async def download_media(url: str, type: str, api_key: str, background_tasks: BackgroundTasks):
+    if type != "audio":
+        raise HTTPException(status_code=400, detail="This cookies-free API currently supports type=audio only")
+    return await make_audio(url, api_key, background_tasks)

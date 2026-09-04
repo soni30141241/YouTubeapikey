@@ -230,8 +230,8 @@ async def render_api_docs(query):
         f"**Base URL:**\n"
         f"`{API_URL}`\n\n"
 
-        "**Download Endpoint:**\n"
-        f"`{API_URL}/download`\n\n"
+        "**Audio Endpoint:**\n"
+        f"`{API_URL}/audio`\n\n"
 
         "**Method:** `GET`\n\n"
 
