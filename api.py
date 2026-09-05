@@ -73,6 +73,7 @@ async def make_audio(url: str, api_key: str, background_tasks: BackgroundTasks):
         "noplaylist": True,
         "outtmpl": str(output_base) + ".%(ext)s",
         "format": "bestaudio/best",
+        "cookiefile": "/data/cookies.txt",
         "retries": 2,
         "fragment_retries": 2,
         "socket_timeout": 30,
