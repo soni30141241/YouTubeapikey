@@ -3,5 +3,5 @@ uvicorn
 pyrogram
 tgcrypto
 aiosqlite
-yt-dlp
+yt-dlp[default]
 
